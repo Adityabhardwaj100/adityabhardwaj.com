@@ -1,0 +1,59 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(8, 8, 8, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.card {
+  width: 100%;
+  max-width: 34rem;
+  padding: 2.75rem 2.25rem;
+  border-radius: 1.5rem;
+  background: rgba(24, 24, 24, 0.92);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  font-family: system-ui, sans-serif;
+  color: #f2f2f0;
+}
+
+.heading {
+  font-size: clamp(1.75rem, 5vw, 2.5rem);
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0 0 1.5rem;
+}
+
+.text {
+  color: rgba(242, 242, 240, 0.55);
+  font-size: 1rem;
+  line-height: 1.6;
+  margin: 0 0 1.25rem;
+}
+
+.button {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 1rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: #f2f2f0;
+  color: #111;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.button:hover {
+  opacity: 0.85;
+}

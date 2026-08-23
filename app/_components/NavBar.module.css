@@ -1,0 +1,35 @@
+.nav {
+  position: fixed;
+  top: 2rem;
+  left: 2.5rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.item {
+  padding: 0.65rem 1.25rem;
+  border-radius: 0.6rem;
+  background: rgba(38, 38, 38, 0.9);
+  color: #f2f2f0;
+  font-family: system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.item:hover {
+  background: rgba(64, 64, 64, 0.9);
+}
+
+.item[data-active] {
+  background: #f2f2f0;
+  color: #111;
+}
+
+.item[data-active]:hover {
+  background: #f2f2f0;
+}

@@ -1,0 +1,16 @@
+.canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  z-index: 0;
+  /* Receives drag/wheel/click directly — the overlay above it is
+     pointer-events: none except for its own interactive elements. */
+  touch-action: none;
+  cursor: grab;
+}
+
+.canvas:active {
+  cursor: grabbing;
+}

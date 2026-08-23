@@ -1,0 +1,58 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  /* Let drag/scroll/click reach the canvas everywhere by default;
+     individual children opt back in with pointer-events: auto. */
+  pointer-events: none;
+}
+
+.hint {
+  position: absolute;
+  top: 2rem;
+  right: 2.5rem;
+  pointer-events: auto;
+  font-family: system-ui, sans-serif;
+  color: #f2f2f0;
+  mix-blend-mode: difference;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.lightbox {
+  position: absolute;
+  left: 2.5rem;
+  bottom: 2.5rem;
+  pointer-events: auto;
+  color: #f2f2f0;
+  font-family: system-ui, sans-serif;
+  mix-blend-mode: difference;
+}
+
+.lightboxTitle {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.lightboxDate {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin: 0.25rem 0 0;
+}
+
+.closeButton {
+  position: absolute;
+  top: 2rem;
+  right: 2.5rem;
+  pointer-events: auto;
+  background: none;
+  border: none;
+  color: #f2f2f0;
+  font-family: system-ui, sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  mix-blend-mode: difference;
+}
