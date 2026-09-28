@@ -4,8 +4,10 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { COUNT, KEY, PORTRAIT_H, PORTRAIT_W, buildShapes, samplePortrait, type Shape } from './shapes';
-import { CHAMBER_RADIUS, createCylinder } from './cylinder';
+import { COUNT, KEY, buildShapes, type Shape } from './shapes';
+import { CHAMBER_RADIUS, DEPTH, createCylinder } from './cylinder';
+import { createCartridge, createSlug } from './bullets';
+import { POSTER_HOLE, POSTER_Z, createPoster, drawPoster, type PosterFonts } from './poster';
 
 const particleVertex = /* glsl */ `
   attribute vec3 aFrom;
@@ -94,52 +96,67 @@ const emberFragment = /* glsl */ `
   }
 `;
 
-const portraitFragment = /* glsl */ `
-  precision highp float;
-  uniform sampler2D uMap;
-  uniform float uOpacity;
-  varying vec2 vUv;
-  void main() {
-    vec3 c = texture2D(uMap, vUv).rgb;
-    float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(0.0, 0.18, 1.0 - vUv.x)
-               * smoothstep(0.0, 0.25, vUv.y) * (1.0 - smoothstep(0.66, 0.76, vUv.y));
-    // Put the sky out, keep the hat: dim bright pixels in the top of the frame.
-    float lum = dot(c, vec3(0.3, 0.59, 0.11));
-    c *= 1.0 - smoothstep(0.35, 0.7, lum) * smoothstep(0.48, 0.6, vUv.y);
-    // Warm the right edge, as if lit by a fire off-frame.
-    c += vec3(0.3, 0.12, 0.02) * smoothstep(0.55, 1.0, vUv.x) * c;
-    gl_FragColor = vec4(c * 1.15, edge * uOpacity);
-  }
-`;
+/** The hammer falls just after the story reaches the cylinder's last line. */
+export const FIRE_KEY = KEY.cylinder + 0.06;
+/** The bullet goes through the poster. */
+export const IMPACT_KEY = KEY.shot + 0.62;
 
-const portraitVertex = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-/** Camera per key: [x, y, z, lookY]. */
-const CAMERA: [number, number, number, number][] = [
-  [0, 0, 10, 0], // future
-  [0.5, 0.2, 9.4, 0], // chaos
-  [-0.4, 0.3, 9, 0.2], // lattice
-  [0, 0.4, 10, 0], // network
-  [0, 0, 9, 0], // gear
-  [0.2, 0.1, 7.6, 0], // cylinder
-  [0, 0, 8.2, 0], // portrait
-  [0.3, -0.2, 9.5, 0], // knot
-  [0, 0, 9, 0], // ring
-  [0, 0.3, 11, 0], // haze
-  [0, 1.4, 9.6, -0.5], // foundation
-  [0, 0.1, 7.5, 0.1], // flame
+/** Camera per key: [x, y, z, lookY, lookZ]. */
+const CAMERA: [number, number, number, number, number][] = [
+  [0, 0, 10, 0, 0], // future
+  [0.5, 0.2, 9.4, 0, 0], // chaos
+  [-0.4, 0.3, 9, 0.2, 0], // lattice
+  [0, 0.4, 10, 0, 0], // network
+  [0, 0, 9, 0, 0], // gear
+  [0.2, 0.1, 7.6, 0, 0], // cylinder
+  [0, 0.25, 7.4, 0, 0], // shot — bullet-time
+  [0.15, -0.1, POSTER_Z + 8.4, 0, POSTER_Z], // wanted
+  [0.3, -0.2, 9.5, 0, 0], // knot
+  [0, 0, 9, 0, 0], // ring
+  [0, 0.3, 11, 0, 0], // haze
+  [0, 1.4, 9.6, -0.5, 0], // foundation
+  [0, 0.1, 7.5, 0.1, 0], // flame
 ];
 
 const ease = (t: number) => t * t * (3 - 2 * t);
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 /** 1 at `center`, falling to 0 at ±`width`. */
 const near = (k: number, center: number, width: number) => clamp01(1 - Math.abs(k - center) / width);
+
+const SEAT_Z = DEPTH / 2 + 0.04;
+
+/** A muzzle-flash starburst: hot core, ragged spikes. */
+function starburst() {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const c = size / 2;
+  const core = ctx.createRadialGradient(c, c, 0, c, c, c * 0.5);
+  core.addColorStop(0, 'rgba(255,255,255,1)');
+  core.addColorStop(0.3, 'rgba(255,210,150,0.9)');
+  core.addColorStop(1, 'rgba(255,120,40,0)');
+  ctx.fillStyle = core;
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2 + (i % 2) * 0.2;
+    const len = c * (i % 3 === 0 ? 0.98 : 0.6);
+    const g = ctx.createLinearGradient(c, c, c + Math.cos(a) * len, c + Math.sin(a) * len);
+    g.addColorStop(0, 'rgba(255,230,190,0.9)');
+    g.addColorStop(1, 'rgba(255,120,40,0)');
+    ctx.strokeStyle = g;
+    ctx.lineWidth = i % 3 === 0 ? 7 : 4;
+    ctx.beginPath();
+    ctx.moveTo(c, c);
+    ctx.lineTo(c + Math.cos(a) * len, c + Math.sin(a) * len);
+    ctx.stroke();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
 export class AboutStage {
   private renderer: THREE.WebGLRenderer;
@@ -153,32 +170,40 @@ export class AboutStage {
   private particles: THREE.ShaderMaterial;
   private embers: THREE.ShaderMaterial;
   private emberGeo = new THREE.BufferGeometry();
-  private cylinder = createCylinder();
-  private portrait: THREE.ShaderMaterial;
-  private portraitTex: THREE.Texture;
   private forge: THREE.PointLight;
 
+  private cylinder = createCylinder();
+  private cartridges = Array.from({ length: 6 }, () => createCartridge());
+  private flash: THREE.Sprite;
+  private flashLight = new THREE.PointLight('#ffb266', 0, 12, 2);
+  private slug = createSlug();
+  private bullet = new THREE.Group();
+  private bulletSpin = new THREE.Group();
+  private poster = createPoster();
+  private posterLight = new THREE.PointLight('#ffb070', 0, 14, 2);
+  private impactLight = new THREE.PointLight('#ffcf99', 0, 8, 2);
+
   private key = 0;
+  private lastKey = 0;
+  private load = 0;
   private segment = -1;
   private chamber = 0;
   private spinAngle = 0;
   private spinVel = 0;
+  private impactTime = -1;
   private pointer = new THREE.Vector2();
   private pointerSmooth = new THREE.Vector2();
-  private camPos = new THREE.Vector3(0, 0, 10);
-  private lookY = 0;
   private gearTime = 0;
   private lastTime = 0;
-  private width = 1;
-  private height = 1;
   private idle: number;
   /** Pull the camera back on tall, narrow screens so every formation fits. */
   private fit = 1;
+  private tmp = new THREE.Vector3();
 
-  /** Fires once the portrait has been sampled (so the whole story is ready). */
+  /** Fires once the poster and the engraved round are painted (so the whole story is ready). */
   onReady?: () => void;
 
-  constructor(canvas: HTMLCanvasElement, opts: { reducedMotion: boolean }) {
+  constructor(canvas: HTMLCanvasElement, opts: { reducedMotion: boolean; fonts: PosterFonts }) {
     this.idle = opts.reducedMotion ? 0 : 1;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     // The composer's linear buffer is cleared with the *sRGB-encoded* clear colour, and
@@ -245,32 +270,43 @@ export class AboutStage {
     });
     this.scene.add(new THREE.Points(this.emberGeo, this.embers));
 
-    // The brass cylinder.
+    // The brass cylinder and its six rounds, each seated in its own chamber.
     this.scene.add(this.cylinder.group);
     this.cylinder.setOpacity(0);
-
-    // The photograph, faintly under the particle portrait.
-    this.portraitTex = new THREE.TextureLoader().load('/about-portrait.jpg');
-    this.portraitTex.colorSpace = THREE.SRGBColorSpace;
-    this.portrait = new THREE.ShaderMaterial({
-      vertexShader: portraitVertex,
-      fragmentShader: portraitFragment,
-      uniforms: { uMap: { value: this.portraitTex }, uOpacity: { value: 0 } },
-      transparent: true,
-      depthWrite: false,
+    this.cartridges.forEach((c) => {
+      this.cylinder.spin.add(c.group);
+      c.setOpacity(0);
     });
-    const plane = new THREE.Mesh(new THREE.PlaneGeometry(PORTRAIT_W, PORTRAIT_H), this.portrait);
-    plane.position.z = -0.1;
-    this.scene.add(plane);
 
-    const img = new Image();
-    img.onload = () => {
-      samplePortrait(img, this.shapes[KEY.portrait]!);
-      this.segment = -1; // re-upload in case we're already on the portrait
-      this.onReady?.();
-    };
-    img.onerror = () => this.onReady?.();
-    img.src = '/about-portrait.jpg';
+    // Muzzle flash.
+    this.flash = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: starburst(),
+        color: '#ffd9a8',
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    this.scene.add(this.flash, this.flashLight);
+
+    // The round with ADI on it: yaw on the outer group, lying along +x, spinning on its own axis.
+    const lying = new THREE.Group();
+    lying.rotation.z = -Math.PI / 2;
+    lying.add(this.bulletSpin);
+    this.bulletSpin.add(this.slug.mesh);
+    this.bullet.add(lying);
+    this.bullet.visible = false;
+    this.scene.add(this.bullet);
+
+    // The poster on the far wall, its lamp, and the light of the hit.
+    this.scene.add(this.poster.pivot, this.posterLight, this.impactLight);
+    this.posterLight.position.set(1.8, 2.2, POSTER_Z + 3.4);
+    this.impactLight.position.set(POSTER_HOLE[0], POSTER_HOLE[1], POSTER_Z + 0.4);
+    this.poster.setOpacity(0);
+
+    void this.prepare(opts.fonts);
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -279,9 +315,22 @@ export class AboutStage {
     this.composer.addPass(new OutputPass());
   }
 
+  /** Paint the poster from the photograph and engrave the round, once fonts are in. */
+  private async prepare(fonts: PosterFonts) {
+    const anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    try {
+      const img = new Image();
+      img.src = '/about-portrait.jpg';
+      await img.decode();
+      this.poster.setArtwork(await drawPoster(img, fonts), anisotropy);
+      this.slug.engrave(fonts.poster, anisotropy);
+    } catch {
+      // The story still runs; the poster just stays blank.
+    }
+    this.onReady?.();
+  }
+
   resize(width: number, height: number) {
-    this.width = width;
-    this.height = height;
     const dpr = Math.min(window.devicePixelRatio || 1, width < 760 ? 1.5 : 1.75);
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(width, height, false);
@@ -301,7 +350,7 @@ export class AboutStage {
     this.embers.uniforms.uScale!.value = scale;
   }
 
-  /** Continuous position in the story: 0 = future … 11 = flame. */
+  /** Continuous position in the story: 0 = future … 12 = flame. */
   setKey(key: number) {
     this.key = Math.min(Math.max(key, 0), this.shapes.length - 1);
   }
@@ -309,6 +358,11 @@ export class AboutStage {
   /** Which chamber (0–5) sits under the hammer. */
   setChamber(chamber: number) {
     this.chamber = chamber;
+  }
+
+  /** How many rounds are in, as a continuous 0→6 (a fraction is a round sliding home). */
+  setLoad(load: number) {
+    this.load = load;
   }
 
   setPointer(x: number, y: number) {
@@ -341,18 +395,51 @@ export class AboutStage {
     this.gearTime += dt * 0.35 * this.idle;
     u.uSpin!.value = this.gearTime * ease(gearW);
 
-    // The portrait is drawn in bone white, not brass; the photo surfaces beneath it.
-    const portraitW = near(k, KEY.portrait, 0.75);
-    u.uMono!.value = ease(portraitW);
-    this.portrait.uniforms.uOpacity!.value = ease(clamp01((portraitW - 0.5) / 0.5)) * 0.9;
+    // The vapour trail is white, not brass.
+    u.uMono!.value = 0.7 * ease(near(k, KEY.shot, 0.8));
 
-    // The cylinder: present for the origin, then we push into a chamber.
+    this.renderCylinder(k, dt);
+    this.renderShot(k, time);
+    this.renderPoster(k, time);
+
+    // Light and atmosphere.
+    this.forge.intensity = 14 * (0.9 + 0.1 * Math.sin(time * 7.3) * Math.sin(time * 3.1) * this.idle);
+    this.embers.uniforms.uTime!.value = time * (this.idle || 0.0001);
+    this.embers.uniforms.uOpacity!.value =
+      0.65 * (1 - 0.6 * near(k, KEY.haze, 1)) * (1 - 0.5 * near(k, KEY.shot, 1)) * (1 - 0.4 * near(k, KEY.wanted, 1));
+    this.bloom.strength = 0.5 + 0.35 * near(k, KEY.haze, 1) + 0.3 * near(k, KEY.flame, 1);
+
+    // Camera: glide between per-key positions, with a touch of hand-held parallax.
+    const i = Math.min(Math.floor(k), CAMERA.length - 2);
+    const f = ease(k - i);
+    const a = CAMERA[i]!;
+    const b = CAMERA[i + 1]!;
+    const lerp = (n: number) => a[n]! + (b[n]! - a[n]!) * f;
+    this.pointerSmooth.lerp(this.pointer, 1 - Math.pow(0.02, dt));
+    const par = 0.35 * this.idle;
+    const lookZ = lerp(4);
+    this.camera.position.set(
+      lerp(0) + this.pointerSmooth.x * par,
+      lerp(1) + this.pointerSmooth.y * par * 0.6,
+      lookZ + (lerp(2) - lookZ) * this.fit,
+    );
+    this.camera.lookAt(0, lerp(3), lookZ);
+
+    this.lastKey = k;
+    this.composer.render(dt);
+  }
+
+  /** Six rounds slide home one line at a time; then the hammer falls. */
+  private renderCylinder(k: number, dt: number) {
     const cyl = this.cylinder;
-    const inW = clamp01((k - (KEY.cylinder - 0.7)) / 0.6);
-    const push = ease(clamp01(k - KEY.cylinder));
-    const fadeOut = 1 - clamp01((push - 0.55) / 0.3);
-    cyl.setOpacity(k < KEY.cylinder ? ease(inW) : fadeOut);
-    u.uOpacity!.value = 1 - 0.75 * near(k, KEY.cylinder, 0.8) * (1 - push);
+    const fired = clamp01(k - KEY.cylinder);
+    const arrive = ease(clamp01((k - (KEY.cylinder - 0.7)) / 0.6));
+    const leave = 1 - clamp01((fired - 0.14) / 0.16);
+    const opacity = k < KEY.cylinder ? arrive : leave;
+    cyl.setOpacity(opacity);
+
+    // Particles step back while the metal holds the stage.
+    this.particles.uniforms.uOpacity!.value = 1 - 0.75 * near(k, KEY.cylinder, 0.8) * (k < KEY.cylinder ? 1 : 1 - fired);
 
     // Chamber spring: a weighted snap with a little overshoot.
     const target = -this.chamber * (Math.PI / 3);
@@ -361,34 +448,83 @@ export class AboutStage {
     this.spinAngle += this.spinVel * dt;
     cyl.spin.rotation.z = this.idle ? this.spinAngle : target;
 
+    // Recoil: a hard kick back as the round goes, settling fast.
+    const since = k >= FIRE_KEY ? fired - (FIRE_KEY - KEY.cylinder) : -1;
+    const kick = since >= 0 ? Math.exp(-since * 22) : 0;
     const scale = 1.35;
     cyl.group.scale.setScalar(scale);
-    cyl.group.rotation.set(-0.28 * (1 - push), 0.42 * (1 - push), 0);
-    cyl.group.position.set(0, -CHAMBER_RADIUS * scale * push, 6.2 * push);
+    cyl.group.rotation.set(-0.28 + kick * 0.12, 0.42, kick * 0.05);
+    cyl.group.position.set(0, 0, -kick * 0.4 - fired * 1.2);
 
-    // Light and atmosphere.
-    this.forge.intensity = 14 * (0.9 + 0.1 * Math.sin(time * 7.3) * Math.sin(time * 3.1) * this.idle);
-    this.embers.uniforms.uTime!.value = time * (this.idle || 0.0001);
-    this.embers.uniforms.uOpacity!.value = 0.65 * (1 - 0.8 * portraitW) * (1 - 0.6 * near(k, KEY.haze, 1));
-    this.bloom.strength = 0.5 + 0.35 * near(k, KEY.haze, 1) + 0.3 * near(k, KEY.flame, 1);
+    // Each round: in from the front right, turning, then seated flush.
+    this.cartridges.forEach((c, n) => {
+      const t = clamp01((this.load - n - 0.05) / 0.4);
+      const e = easeOut(t);
+      const th = Math.PI / 2 + (n * Math.PI) / 3;
+      c.group.position.set(
+        Math.cos(th) * CHAMBER_RADIUS + (1 - e) * 1.4,
+        Math.sin(th) * CHAMBER_RADIUS + (1 - e) * 0.6,
+        SEAT_Z + (1 - e) * 3.6,
+      );
+      c.group.rotation.set((1 - e) * 0.5, (1 - e) * -0.9, 0);
+      c.setOpacity(clamp01(t * 6) * opacity);
+    });
 
-    // Camera: glide between per-key positions, with a touch of hand-held parallax.
-    const i = Math.min(Math.floor(k), CAMERA.length - 2);
-    const f = ease(k - i);
-    const a = CAMERA[i]!;
-    const b = CAMERA[i + 1]!;
-    this.pointerSmooth.lerp(this.pointer, 1 - Math.pow(0.02, dt));
-    const par = 0.35 * this.idle;
-    this.camPos.set(
-      a[0] + (b[0] - a[0]) * f + this.pointerSmooth.x * par,
-      a[1] + (b[1] - a[1]) * f + this.pointerSmooth.y * par * 0.6,
-      (a[2] + (b[2] - a[2]) * f) * this.fit,
-    );
-    this.lookY = a[3] + (b[3] - a[3]) * f;
-    this.camera.position.copy(this.camPos);
-    this.camera.lookAt(0, this.lookY, 0);
+    // Muzzle flash at the chamber under the hammer.
+    const flash = since >= 0 && since < 0.5 ? Math.exp(-since * 18) : 0;
+    this.tmp.set(0, CHAMBER_RADIUS, SEAT_Z);
+    cyl.group.localToWorld(this.tmp);
+    this.flash.position.copy(this.tmp);
+    this.flash.scale.setScalar(0.6 + flash * 4.2);
+    this.flash.material.rotation = since * 3;
+    this.flash.material.opacity = flash;
+    this.flash.visible = flash > 0.01;
+    this.flashLight.position.copy(this.tmp);
+    this.flashLight.intensity = 90 * flash;
+  }
 
-    this.composer.render(dt);
+  /** Bullet-time, then the chase to the wall. */
+  private renderShot(k: number, time: number) {
+    const inbound = clamp01((k - KEY.cylinder - 0.15) / 0.85);
+    const outbound = clamp01(k - KEY.shot);
+    this.bullet.visible = k > KEY.cylinder + 0.15 && k < IMPACT_KEY;
+    if (!this.bullet.visible) return;
+
+    const drift = Math.sin(time * 0.5) * 0.04 * this.idle;
+    if (k < KEY.shot) {
+      // Slowing into frame from the left, unwinding its spin.
+      const e = easeOut(inbound);
+      this.bullet.position.set(-9 * (1 - e), 0.35 * (1 - e) + drift, 0);
+      this.bullet.rotation.set(0, 0, 0);
+      this.bulletSpin.rotation.y = Math.PI - (1 - e) * 6 * Math.PI;
+      return;
+    }
+
+    // Turn toward the wall, then go.
+    const turn = ease(clamp01(outbound / 0.22));
+    const go = clamp01((outbound - 0.18) / (IMPACT_KEY - KEY.shot - 0.18));
+    const s = go * go;
+    this.bullet.rotation.set(0, turn * (Math.PI / 2), 0);
+    this.bullet.position.set(POSTER_HOLE[0] * s, drift * (1 - s) + POSTER_HOLE[1] * s, (POSTER_Z + 1.1) * s);
+    this.bulletSpin.rotation.y = Math.PI + Math.sin(time * 0.7) * 0.35 * this.idle * (1 - turn) + s * 14;
+  }
+
+  /** The WANTED poster: dark on the wall, lit by the hit, swinging on its nail. */
+  private renderPoster(k: number, time: number) {
+    if (this.lastKey < IMPACT_KEY && k >= IMPACT_KEY) this.impactTime = time;
+    if (k < IMPACT_KEY) this.impactTime = -1;
+
+    const hit = k >= IMPACT_KEY;
+    const waiting = ease(clamp01((k - KEY.shot - 0.3) / 0.3)) * 0.35;
+    const gone = 1 - clamp01((k - KEY.wanted - 0.25) / 0.35);
+    const visible = (hit ? 1 : waiting) * gone;
+    this.poster.setOpacity(visible);
+    this.posterLight.intensity = 3 * (hit ? 1 : waiting) * gone;
+
+    const t = this.impactTime >= 0 ? time - this.impactTime : -1;
+    const swing = t >= 0 ? 0.16 * Math.exp(-t * 1.4) * Math.sin(t * 5.2) * (this.idle || 0) : 0;
+    this.poster.pivot.rotation.set(0, 0, -0.025 + swing);
+    this.impactLight.intensity = t >= 0 ? 18 * Math.exp(-t * 5) : 0;
   }
 
   dispose() {
@@ -396,9 +532,12 @@ export class AboutStage {
     this.emberGeo.dispose();
     this.particles.dispose();
     this.embers.dispose();
-    this.portrait.dispose();
-    this.portraitTex.dispose();
     this.cylinder.dispose();
+    this.cartridges.forEach((c) => c.dispose());
+    this.flash.material.map?.dispose();
+    this.flash.material.dispose();
+    this.slug.dispose();
+    this.poster.dispose();
     this.scene.environment?.dispose();
     this.composer.dispose();
     this.renderer.dispose();

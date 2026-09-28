@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-import { EB_Garamond, Instrument_Serif } from 'next/font/google';
+import { EB_Garamond, Instrument_Serif, Rye } from 'next/font/google';
 import AboutExperience from './_components/AboutExperience';
 import styles from './about.module.css';
 
@@ -18,6 +18,14 @@ const body = EB_Garamond({
   subsets: ['latin'],
   style: ['normal', 'italic'],
   variable: '--font-body',
+  display: 'swap',
+});
+
+/** Wild-west display face, only for the WANTED poster painted in the 3D scene. */
+const poster = Rye({
+  subsets: ['latin'],
+  weight: '400',
+  variable: '--font-poster',
   display: 'swap',
 });
 
@@ -71,7 +79,7 @@ const Step = ({ i, children }: { i: number; children: ReactNode }) => (
 
 export default function AboutPage() {
   return (
-    <div className={`${display.variable} ${body.variable}`}>
+    <div className={`${display.variable} ${body.variable} ${poster.variable}`}>
       <noscript>
         <style>{NO_SCRIPT_CSS}</style>
       </noscript>
@@ -112,7 +120,7 @@ export default function AboutPage() {
           </p>
         </Block>
 
-        <Block keys={[5, 5, 5, 5, 5, 5]} length={3.6} numeral="IV" label="Origin" origin ease={0.1}>
+        <Block keys={[5, 5, 5, 5, 5, 5]} length={3.6} numeral="IV" label="Origin" origin ease={0.5}>
           <p className={`${styles.text} ${styles.chambers}`}>
             <Step i={0}>I didn&rsquo;t come up through code. I came up through management.</Step>{' '}
             <Step i={1}>
@@ -125,7 +133,7 @@ export default function AboutPage() {
           </p>
         </Block>
 
-        <Block keys={[6]} length={1.7} numeral="V" label="The Man in the Room">
+        <Block keys={[6, 7]} length={2.8} numeral="V" label="The Man in the Room">
           <div className={styles.fallbackPortrait}>
             <Image
               src="/about-portrait.jpg"
@@ -140,7 +148,7 @@ export default function AboutPage() {
           </p>
         </Block>
 
-        <Block keys={[7, 8]} length={2.2} numeral="VI" label="The Work">
+        <Block keys={[8, 9]} length={2.2} numeral="VI" label="The Work">
           <p className={styles.text}>
             <Step i={0}>
               Four things I do: language models, generative media, web, automation. The tools change every six
@@ -152,7 +160,7 @@ export default function AboutPage() {
           </p>
         </Block>
 
-        <Block keys={[9, 10]} length={2.2} numeral="VII" label="The Promise">
+        <Block keys={[10, 11]} length={2.2} numeral="VII" label="The Promise">
           <p className={styles.text}>
             <Step i={0}>Everyone in this industry is promising you the future.</Step>{' '}
             <Step i={1}>
@@ -162,7 +170,7 @@ export default function AboutPage() {
           </p>
         </Block>
 
-        <Block keys={[11]} length={1.4} numeral="VIII" label="The Room">
+        <Block keys={[12]} length={1.4} numeral="VIII" label="The Room">
           <p className={styles.display}>
             <Step i={0}>One conversation and you&rsquo;ll know whether I&rsquo;m worth the room.</Step>
           </p>

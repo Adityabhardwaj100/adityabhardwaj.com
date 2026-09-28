@@ -2,7 +2,7 @@
 
 import Lenis from 'lenis';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AboutStage } from '../_webgl/Stage';
+import { AboutStage, FIRE_KEY, IMPACT_KEY } from '../_webgl/Stage';
 import { KEY } from '../_webgl/shapes';
 import { sound } from '../_lib/audio';
 import SoundToggle from './SoundToggle';
@@ -41,9 +41,17 @@ export default function AboutExperience({ children }: { children: ReactNode }) {
     const easeOf = blocks.map((b) => Number(b.dataset.ease ?? 0.62));
     const originBlock = blocks.findIndex((b) => b.hasAttribute('data-origin'));
 
+    // next/font's generated family names, for painting the poster and the engraving.
+    const css = getComputedStyle(root);
+    const fonts = {
+      poster: css.getPropertyValue('--font-poster').trim() || 'Georgia, serif',
+      display: css.getPropertyValue('--font-display').trim() || 'Georgia, serif',
+      body: css.getPropertyValue('--font-body').trim() || 'Georgia, serif',
+    };
+
     let stage: AboutStage | null = null;
     try {
-      stage = new AboutStage(canvas, { reducedMotion });
+      stage = new AboutStage(canvas, { reducedMotion, fonts });
     } catch {
       root.dataset.gl = 'off';
     }
@@ -73,6 +81,7 @@ export default function AboutExperience({ children }: { children: ReactNode }) {
     let activeBlock = -1;
     let activeStep = -1;
     let chamber = 0;
+    let seated = 0;
     let lastKey = 0;
     let frame = 0;
     let counter = 0;
@@ -128,16 +137,26 @@ export default function AboutExperience({ children }: { children: ReactNode }) {
         activeStep = si;
       }
 
-      // The cylinder: one chamber per origin line; parked before and after.
+      // The cylinder: one chamber per origin line, and a round loaded as each line is read.
       const nextChamber = bi < originBlock ? 0 : bi > originBlock ? 5 : si;
       if (nextChamber !== chamber) {
         if (bi === originBlock) sound.click();
         chamber = nextChamber;
       }
+      const load = bi < originBlock ? 0 : bi > originBlock ? 6 : sub;
+      const nowSeated = Math.max(0, Math.min(6, Math.floor(load - 0.35) + 1));
+      if (nowSeated > seated && bi === originBlock) sound.click();
+      seated = nowSeated;
 
-      // Sound: silence as we go into the chamber, one note as the man appears, warmth at the end.
-      sound.setScene(key > KEY.cylinder + 0.35 && key < KEY.portrait + 0.6 ? 'silence' : key >= KEY.foundation + 0.4 ? 'resolve' : 'bed');
-      if (lastKey < KEY.portrait - 0.4 && key >= KEY.portrait - 0.4) sound.toll();
+      // Sound: the shot, silence through bullet-time, the hit and a low note as the poster swings.
+      if (lastKey < FIRE_KEY && key >= FIRE_KEY) sound.shot();
+      if (lastKey < IMPACT_KEY && key >= IMPACT_KEY) {
+        sound.impact();
+        sound.toll();
+      }
+      sound.setScene(
+        key > FIRE_KEY && key < IMPACT_KEY + 0.3 ? 'silence' : key >= KEY.foundation + 0.4 ? 'resolve' : 'bed',
+      );
       lastKey = key;
 
       if (hudBarRef.current) {
@@ -148,6 +167,7 @@ export default function AboutExperience({ children }: { children: ReactNode }) {
       if (stage) {
         stage.setKey(key);
         stage.setChamber(chamber);
+        stage.setLoad(load);
         stage.render(now);
       }
     };

@@ -6,6 +6,8 @@
  * World scale: the camera sits ~10 units back, so the frame is ~6 units tall.
  */
 
+import { POSTER_HOLE, POSTER_Z } from './poster';
+
 export const COUNT = 7000;
 
 export interface Shape {
@@ -23,12 +25,13 @@ export const KEY = {
   network: 3,
   gear: 4,
   cylinder: 5,
-  portrait: 6,
-  knot: 7,
-  ring: 8,
-  haze: 9,
-  foundation: 10,
-  flame: 11,
+  shot: 6,
+  wanted: 7,
+  knot: 8,
+  ring: 9,
+  haze: 10,
+  foundation: 11,
+  flame: 12,
 } as const;
 
 function rng(seed: number) {
@@ -208,6 +211,57 @@ const halo = () =>
     return 0.06 + r() * 0.1;
   });
 
+/** Bullet-time: the round hangs mid-air trailing vapour and shock rings. Bullet at origin, flying +x. */
+const shot = () =>
+  make(59, (i, r, o) => {
+    const part = i / COUNT;
+    if (part < 0.55) {
+      // Vapour trail, widening behind the bullet.
+      const back = Math.pow(r(), 0.7) * 7;
+      const spread = 0.06 + back * 0.07;
+      const th = r() * Math.PI * 2;
+      const rad = Math.sqrt(r()) * spread;
+      o[0] = -1.1 - back;
+      o[1] = Math.cos(th) * rad;
+      o[2] = Math.sin(th) * rad;
+      return 0.55 - back * 0.06;
+    }
+    if (part < 0.85) {
+      // Three shock rings, each larger and fainter.
+      const ring = Math.floor(r() * 3);
+      const th = r() * Math.PI * 2;
+      const rad = 0.55 + ring * 0.45 + gauss(r) * 0.015;
+      o[0] = -1.4 - ring * 1.3 + gauss(r) * 0.03;
+      o[1] = Math.cos(th) * rad;
+      o[2] = Math.sin(th) * rad;
+      return 0.9 - ring * 0.2;
+    }
+    // Loose dust hanging in the frozen air.
+    o[0] = (r() - 0.5) * 12;
+    o[1] = (r() - 0.5) * 6;
+    o[2] = (r() - 0.5) * 6 - 1;
+    return 0.12;
+  });
+
+/** The poster on the wall: dust hanging in the lamplight around it, smoke curling from the hole. */
+const wanted = () =>
+  make(61, (i, r, o) => {
+    const part = i / COUNT;
+    if (part < 0.12) {
+      // Smoke from the bullet hole, curling up.
+      const h = Math.pow(r(), 0.8) * 2.6;
+      o[0] = POSTER_HOLE[0] + Math.sin(h * 2.4 + 1) * 0.12 * h + gauss(r) * 0.04 * (1 + h);
+      o[1] = POSTER_HOLE[1] + h;
+      o[2] = POSTER_Z + 0.08 + gauss(r) * 0.05;
+      return 0.35 - h * 0.1;
+    }
+    // Dust motes in the air between us and the wall.
+    o[0] = (r() - 0.5) * 7;
+    o[1] = (r() - 0.5) * 5.5;
+    o[2] = POSTER_Z + 0.4 + r() * 5;
+    return 0.05 + r() * 0.08;
+  });
+
 /** Four things, tangled: "taking something complicated…" */
 const knot = () =>
   make(71, (_i, r, o) => {
@@ -296,95 +350,19 @@ const flame = () =>
   });
 
 export function buildShapes(): Shape[] {
-  const base = halo();
   return [
     future(),
     chaos(),
     lattice(),
     network(),
     gear(),
-    base,
-    // The portrait is sampled from the photo at runtime; until then it holds the halo.
-    { pos: base.pos.slice(), bright: base.bright.slice() },
+    halo(),
+    shot(),
+    wanted(),
     knot(),
     ring(),
     haze(),
     foundation(),
     flame(),
   ];
-}
-
-/** Portrait plane size in world units (matches the photo's 1124×1481). */
-export const PORTRAIT_H = 3.6;
-export const PORTRAIT_W = PORTRAIT_H * (1124 / 1481);
-
-/**
- * Draw the man in the room with particles: sample the photo, favouring
- * highlights and edges (face, collar, hand, hat brim), skipping the sky.
- */
-export function samplePortrait(img: HTMLImageElement, into: Shape) {
-  const w = 180;
-  const h = Math.round(w * (img.naturalHeight / img.naturalWidth));
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return;
-  // Soften the film grain first, or every speck reads as an edge.
-  ctx.filter = 'blur(1.2px)';
-  ctx.drawImage(img, 0, 0, w, h);
-  const data = ctx.getImageData(0, 0, w, h).data;
-  const lum = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) lum[i] = (data[i * 4]! * 0.3 + data[i * 4 + 1]! * 0.59 + data[i * 4 + 2]! * 0.11) / 255;
-
-  const smooth = (a: number, b: number, x: number) => {
-    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-    return t * t * (3 - 2 * t);
-  };
-
-  const weight = new Float32Array(w * h);
-  let total = 0;
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const i = y * w + x;
-      const l = lum[i]!;
-      const gx = lum[i + 1]! - lum[i - 1]!;
-      const gy = lum[i + w]! - lum[i - w]!;
-      const edge = Math.max(0, Math.min(1, Math.sqrt(gx * gx + gy * gy) * 5 - 0.35));
-      const v = y / h;
-      const u = x / w;
-      const mask = smooth(0.26, 0.3, v) * smooth(0, 0.12, u) * smooth(0, 0.12, 1 - u) * smooth(0, 0.06, 1 - v);
-      // Up in the sky only edges count, so the hat is traced as a silhouette, not the light behind it.
-      const lit = smooth(0.4, 0.5, v);
-      const wgt = (0.004 + Math.pow(l, 1.8) * lit + edge * 0.6) * mask;
-      weight[i] = wgt;
-      total += wgt;
-    }
-  }
-
-  // Build a cumulative table and draw COUNT samples from it.
-  const cdf = new Float32Array(w * h);
-  let acc = 0;
-  for (let i = 0; i < w * h; i++) {
-    acc += weight[i]! / total;
-    cdf[i] = acc;
-  }
-  const r = rng(131);
-  for (let n = 0; n < COUNT; n++) {
-    const target = r();
-    let lo = 0;
-    let hi = cdf.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (cdf[mid]! < target) lo = mid + 1;
-      else hi = mid;
-    }
-    const x = (lo % w) + r();
-    const y = Math.floor(lo / w) + r();
-    const l = lum[lo]!;
-    into.pos[n * 3] = (x / w - 0.5) * PORTRAIT_W;
-    into.pos[n * 3 + 1] = (0.5 - y / h) * PORTRAIT_H;
-    into.pos[n * 3 + 2] = (r() - 0.5) * 0.12 * (1.2 - l);
-    into.bright[n] = 0.12 + l * 0.75 * smooth(0.36, 0.5, y / h);
-  }
 }

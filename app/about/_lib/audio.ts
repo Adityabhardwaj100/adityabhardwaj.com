@@ -7,8 +7,10 @@
  * Scenes set the bed:  'bed'      low detuned drone under the reading
  *                      'silence'  everything drops out (the cut to black)
  *                      'resolve'  the drone returns a fifth higher, warmer
- * Cues play on top:    click()    the cylinder turning one chamber
- *                      toll()     one deep note as the portrait emerges
+ * Cues play on top:    click()    the cylinder turning, a round seating
+ *                      shot()     the hammer falls
+ *                      impact()   the round goes through the poster
+ *                      toll()     one deep note as the poster swings
  *
  * A licensed track can later be layered in by routing an <audio> element
  * through `bedGain` alongside the oscillators.
@@ -30,6 +32,7 @@ class SoundEngine {
   private reverbSend!: GainNode;
   private oscillators: { osc: OscillatorNode; ratio: number }[] = [];
   private noise!: AudioBuffer;
+  private longNoise!: AudioBuffer;
 
   private enabled = false;
   private scene: SoundScene = 'bed';
@@ -102,6 +105,61 @@ class SoundEngine {
     thump.connect(env).connect(this.master);
     thump.start(t);
     thump.stop(t + 0.2);
+  }
+
+  /** A gunshot: a hard crack of noise, a chest-thump, and the room ringing after. */
+  shot() {
+    const ctx = this.ctx;
+    if (!ctx || !this.enabled) return;
+    const t = ctx.currentTime + 0.01;
+
+    const crack = ctx.createBufferSource();
+    crack.buffer = this.longNoise;
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.setValueAtTime(6000, t);
+    tone.frequency.exponentialRampToValueAtTime(400, t + 0.5);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(1.1, t + 0.004);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+    crack.connect(tone).connect(env);
+    env.connect(this.master);
+    env.connect(this.reverbSend);
+    crack.start(t);
+    crack.stop(t + 0.8);
+
+    const boom = ctx.createOscillator();
+    const boomEnv = ctx.createGain();
+    boom.type = 'sine';
+    boom.frequency.setValueAtTime(95, t);
+    boom.frequency.exponentialRampToValueAtTime(32, t + 0.35);
+    boomEnv.gain.setValueAtTime(0.0001, t);
+    boomEnv.gain.exponentialRampToValueAtTime(0.9, t + 0.006);
+    boomEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    boom.connect(boomEnv).connect(this.master);
+    boom.start(t);
+    boom.stop(t + 0.6);
+  }
+
+  /** The round going through paper into timber: a dull thud and a splintering tick. */
+  impact() {
+    const ctx = this.ctx;
+    if (!ctx || !this.enabled) return;
+    const t = ctx.currentTime + 0.01;
+    const thud = ctx.createOscillator();
+    const env = ctx.createGain();
+    thud.type = 'sine';
+    thud.frequency.setValueAtTime(140, t);
+    thud.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(0.7, t + 0.004);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    thud.connect(env).connect(this.master);
+    thud.start(t);
+    thud.stop(t + 0.35);
+    this.tick(t, 1400, 0.6);
+    this.tick(t + 0.03, 2600, 0.3);
   }
 
   /** One deep, long note that blooms into the reverb. */
@@ -193,6 +251,11 @@ class SoundEngine {
       osc.start();
       this.oscillators.push({ osc, ratio });
     }
+
+    const longLength = Math.floor(ctx.sampleRate * 1);
+    this.longNoise = ctx.createBuffer(1, longLength, ctx.sampleRate);
+    const longData = this.longNoise.getChannelData(0);
+    for (let i = 0; i < longLength; i++) longData[i] = Math.random() * 2 - 1;
 
     const length = Math.floor(ctx.sampleRate * 0.05);
     this.noise = ctx.createBuffer(1, length, ctx.sampleRate);

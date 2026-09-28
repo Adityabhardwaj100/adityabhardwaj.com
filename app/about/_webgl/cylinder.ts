@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 export const CHAMBER_RADIUS = 0.58;
-const DEPTH = 1.5;
+export const DEPTH = 1.5;
 
 /**
  * A six-chamber revolver cylinder in brushed, engraved brass.
