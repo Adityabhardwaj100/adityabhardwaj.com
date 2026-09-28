@@ -14,3 +14,17 @@ body {
   color: #f2f2f0;
   background: #141414;
 }
+
+/* Lenis smooth scroll (used on /about) */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
